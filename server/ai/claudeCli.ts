@@ -45,20 +45,37 @@ export async function runClaudeCli(opts: ClaudeCliOptions): Promise<string> {
       reject(new ProviderResponseError(`Failed to spawn 'claude' CLI: ${err.message}`, 'claude'));
     });
     proc.on('close', (code) => {
+      // Auth failure can surface in either stderr (no JSON envelope) or
+      // inside the envelope's `result` field — check both.
+      const authErrorInStderr = code !== 0 && AUTH_ERROR_PATTERN.test(stderr);
       if (code !== 0 && !stdout.trim()) {
-        reject(new ProviderResponseError(`'claude' exited ${code}: ${stderr.trim()}`, 'claude'));
+        if (authErrorInStderr) {
+          reject(new ProviderAuthError(
+            `Claude authentication required. Run 'claude login' to sign in to your Pro/Max account. (CLI stderr: ${stderr.trim()})`,
+            'claude',
+          ));
+        } else {
+          reject(new ProviderResponseError(`'claude' exited ${code}: ${stderr.trim()}`, 'claude'));
+        }
         return;
       }
       let env: ClaudeJsonEnvelope;
       try {
         env = JSON.parse(stdout);
       } catch (e) {
+        if (authErrorInStderr) {
+          reject(new ProviderAuthError(
+            `Claude authentication required. Run 'claude login'. (CLI stderr: ${stderr.trim()})`,
+            'claude',
+          ));
+          return;
+        }
         reject(new ProviderResponseError(`Failed to parse 'claude' JSON output: ${(e as Error).message}`, 'claude'));
         return;
       }
       const text = env.result ?? '';
       if (env.is_error) {
-        if (AUTH_ERROR_PATTERN.test(text)) {
+        if (AUTH_ERROR_PATTERN.test(text) || authErrorInStderr) {
           reject(new ProviderAuthError(
             `Claude authentication required. Run 'claude login' to sign in to your Pro/Max account. (CLI said: ${text})`,
             'claude',

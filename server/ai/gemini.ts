@@ -89,8 +89,27 @@ export class GeminiAnalyzer implements SwingAnalyzer {
     return validation.data;
   }
 
-  async analyzeImage(_imagePath: string, _prompt: string, _isSimpleMode: boolean): Promise<string> {
-    throw new Error('not implemented');
+  async analyzeImage(imagePath: string, prompt: string, isSimpleMode: boolean): Promise<string> {
+    const client = this.getClient();
+    const model = client.getGenerativeModel({ model: MODEL_NAME, safetySettings: SAFETY_SETTINGS });
+
+    const imageData = fs.readFileSync(imagePath).toString('base64');
+    const audiencePreamble = isSimpleMode
+      ? 'You are a youth baseball coach explaining swing mechanics to parents in plain language. '
+      : 'You are a professional baseball coach with deep technical knowledge. ';
+
+    const result = await model.generateContent({
+      contents: [{
+        role: 'user',
+        parts: [
+          { text: audiencePreamble + prompt },
+          { inlineData: { mimeType: 'image/jpeg', data: imageData } },
+        ],
+      }],
+      generationConfig: { temperature: 0.4, topK: 32, topP: 0.95, maxOutputTokens: 4096 },
+    });
+
+    return result.response.text();
   }
 
   async analyzeStatsChat(_message: string): Promise<StatsChatResult> {

@@ -84,3 +84,40 @@ describe('GeminiAnalyzer.analyzeSwing', () => {
     ).rejects.toBeInstanceOf(ProviderResponseError);
   });
 });
+
+describe('GeminiAnalyzer.analyzeImage', () => {
+  beforeEach(() => {
+    mockGenerateContent.mockReset();
+    process.env.GEMINI_API_KEY = 'test-key';
+  });
+
+  it('returns the model text response with image data attached', async () => {
+    const fs = await import('fs');
+    const os = await import('os');
+    const path = await import('path');
+    const tmpFile = path.join(os.tmpdir(), `gemini-test-${Date.now()}.jpg`);
+    fs.writeFileSync(tmpFile, Buffer.from('fake-image-bytes'));
+
+    mockGenerateContent.mockResolvedValueOnce({
+      response: { text: () => 'STRENGTHS: ...\nIMPROVEMENTS: ...' },
+    });
+    const analyzer = new GeminiAnalyzer();
+    const result = await analyzer.analyzeImage(tmpFile, 'analyze this frame', true);
+    expect(result).toContain('STRENGTHS');
+
+    const callArgs = mockGenerateContent.mock.calls[0][0];
+    const parts = callArgs.contents[0].parts;
+    expect(parts.some((p: any) => p.inlineData?.mimeType === 'image/jpeg')).toBe(true);
+    expect(parts.some((p: any) => /youth baseball coach/.test(p.text ?? ''))).toBe(true);
+
+    fs.unlinkSync(tmpFile);
+  });
+
+  it('throws ProviderAuthError when GEMINI_API_KEY is missing', async () => {
+    delete process.env.GEMINI_API_KEY;
+    const analyzer = new GeminiAnalyzer();
+    await expect(
+      analyzer.analyzeImage('/tmp/foo.jpg', 'prompt', false),
+    ).rejects.toBeInstanceOf(ProviderAuthError);
+  });
+});

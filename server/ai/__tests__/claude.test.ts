@@ -116,3 +116,35 @@ describe('ClaudeAnalyzer.analyzeSwing', () => {
     ).rejects.toBeInstanceOf(ProviderAuthError);
   });
 });
+
+describe('ClaudeAnalyzer.analyzeImage', () => {
+  beforeEach(() => {
+    mockRunClaudeCli.mockReset();
+  });
+
+  it('returns the raw CLI text response', async () => {
+    mockRunClaudeCli.mockResolvedValueOnce('STRENGTHS:\n- good stance\nIMPROVEMENTS:\n- hip rotation');
+    const analyzer = new ClaudeAnalyzer();
+    const result = await analyzer.analyzeImage('/uploads/frame.jpg', 'analyze this frame', true);
+    expect(result).toContain('STRENGTHS');
+  });
+
+  it('configures Read tool, addDir, and image path in prompt', async () => {
+    mockRunClaudeCli.mockResolvedValueOnce('ok');
+    const analyzer = new ClaudeAnalyzer();
+    await analyzer.analyzeImage('/uploads/frame.jpg', 'analyze this frame', false);
+    const callOpts = mockRunClaudeCli.mock.calls[0][0];
+    expect(callOpts.allowedTools).toBe('Read');
+    expect(callOpts.addDir).toMatch(/uploads$/);
+    expect(callOpts.prompt).toMatch(/Image to analyze.*frame\.jpg/);
+    expect(callOpts.prompt).toContain('professional baseball coach');
+  });
+
+  it('selects simple-mode preamble when isSimpleMode is true', async () => {
+    mockRunClaudeCli.mockResolvedValueOnce('ok');
+    const analyzer = new ClaudeAnalyzer();
+    await analyzer.analyzeImage('/uploads/frame.jpg', 'analyze', true);
+    const callOpts = mockRunClaudeCli.mock.calls[0][0];
+    expect(callOpts.prompt).toContain('youth baseball coach');
+  });
+});

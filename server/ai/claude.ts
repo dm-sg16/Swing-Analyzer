@@ -25,9 +25,9 @@ const ANALYSIS_JSON_INSTRUCTION =
   '"recommendedDrills": [{ "title": <string>, "description": <string> }] }\n' +
   'Include at least 5 entries in recommendedDrills. Do not include any text outside the JSON fence.';
 
-function resolveImagePath(uploadPath: string): string {
-  // Route layer stores image URLs like "/uploads/foo.jpg" relative to project root.
-  const cleaned = uploadPath.startsWith('/') ? uploadPath.slice(1) : uploadPath;
+function resolveImagePath(p: string): string {
+  if (path.isAbsolute(p)) return p;
+  const cleaned = p.startsWith('/') ? p.slice(1) : p;
   return path.resolve(process.cwd(), cleaned);
 }
 
@@ -81,8 +81,20 @@ export class ClaudeAnalyzer implements SwingAnalyzer {
     return validation.data;
   }
 
-  async analyzeImage(_imagePath: string, _prompt: string, _isSimpleMode: boolean): Promise<string> {
-    throw new Error('not implemented');
+  async analyzeImage(imagePath: string, prompt: string, isSimpleMode: boolean): Promise<string> {
+    const absPath = resolveImagePath(imagePath);
+    const audiencePreamble = isSimpleMode
+      ? 'You are a youth baseball coach explaining swing mechanics to parents in plain language. '
+      : 'You are a professional baseball coach with deep technical knowledge. ';
+    const fullPrompt = audiencePreamble + prompt +
+      `\n\nImage to analyze (use the Read tool): ${absPath}`;
+
+    return runClaudeCli({
+      prompt: fullPrompt,
+      model: DEFAULT_MODEL,
+      allowedTools: 'Read',
+      addDir: path.dirname(absPath),
+    });
   }
 
   async analyzeStatsChat(_message: string): Promise<StatsChatResult> {

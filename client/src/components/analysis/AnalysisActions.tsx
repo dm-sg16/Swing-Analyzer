@@ -3,7 +3,8 @@ import { AnalysisOptions } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { 
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -15,13 +16,17 @@ interface AnalysisActionsProps {
   onOptionsChange: (options: AnalysisOptions) => void;
   onGenerateAnalysis: () => void;
   isAnalyzing: boolean;
+  provider: 'claude' | 'gemini';
+  onProviderChange: (provider: 'claude' | 'gemini') => void;
 }
 
 export default function AnalysisActions({
   options,
   onOptionsChange,
   onGenerateAnalysis,
-  isAnalyzing
+  isAnalyzing,
+  provider,
+  onProviderChange,
 }: AnalysisActionsProps) {
   const handleOptionChange = (
     key: keyof AnalysisOptions,
@@ -132,6 +137,19 @@ export default function AnalysisActions({
               </Tooltip>
             </div>
           </TooltipProvider>
+        </div>
+
+        <div className="mb-4">
+          <label className="text-sm font-medium text-slate-700 mb-1 block">AI provider</label>
+          <Select value={provider} onValueChange={(v) => onProviderChange(v as 'claude' | 'gemini')}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="claude">Claude (Opus, via subscription)</SelectItem>
+              <SelectItem value="gemini">Gemini (1.5 Pro, via API key)</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <Button

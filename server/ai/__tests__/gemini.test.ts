@@ -121,3 +121,31 @@ describe('GeminiAnalyzer.analyzeImage', () => {
     ).rejects.toBeInstanceOf(ProviderAuthError);
   });
 });
+
+describe('GeminiAnalyzer.analyzeStatsChat', () => {
+  beforeEach(() => {
+    mockGenerateContent.mockReset();
+    process.env.GEMINI_API_KEY = 'test-key';
+  });
+
+  it('extracts stats and returns response text', async () => {
+    mockGenerateContent
+      .mockResolvedValueOnce({
+        response: { text: () => '{"batSpeed":65,"exitVelocity":88,"launchAngle":15,"attackAngle":10,"timeToContact":0.18,"rotationalAccel":1500}' },
+      })
+      .mockResolvedValueOnce({
+        response: { text: () => 'I see your bat speed is 65 mph and exit velocity 88 mph. Nice swing!' },
+      });
+    const analyzer = new GeminiAnalyzer();
+    const result = await analyzer.analyzeStatsChat('My bat speed is 65 and EV is 88');
+    expect(result.stats?.batSpeed).toBe(65);
+    expect(result.stats?.exitVelocity).toBe(88);
+    expect(result.response).toContain('65');
+  });
+
+  it('throws ProviderAuthError when GEMINI_API_KEY is missing', async () => {
+    delete process.env.GEMINI_API_KEY;
+    const analyzer = new GeminiAnalyzer();
+    await expect(analyzer.analyzeStatsChat('whatever')).rejects.toBeInstanceOf(ProviderAuthError);
+  });
+});

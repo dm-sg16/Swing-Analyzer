@@ -2,6 +2,7 @@ import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/ge
 import fs from 'fs';
 import {
   analysisResultsSchema,
+  statsSchema,
   type AnalysisOptions,
   type AnalysisResults,
   type SwingStats,
@@ -12,7 +13,7 @@ import {
   type StatsChatResult,
   type SwingAnalyzer,
 } from './types';
-import { swingAnalysisUserPrompt } from './prompts';
+import { statsChatSystemPrompt, swingAnalysisUserPrompt } from './prompts';
 
 const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
@@ -112,8 +113,42 @@ export class GeminiAnalyzer implements SwingAnalyzer {
     return result.response.text();
   }
 
-  async analyzeStatsChat(_message: string): Promise<StatsChatResult> {
-    throw new Error('not implemented');
+  async analyzeStatsChat(message: string): Promise<StatsChatResult> {
+    const client = this.getClient();
+    const model = client.getGenerativeModel({ model: MODEL_NAME });
+
+    const systemPrompt = statsChatSystemPrompt();
+    const extractionPrompt = `${systemPrompt}\n\nUser message: "${message}"\n\n` +
+      'Extract the swing statistics in JSON format:\n' +
+      '{ "batSpeed": number|null, "exitVelocity": number|null, "launchAngle": number|null, ' +
+      '"attackAngle": number|null, "timeToContact": number|null, "rotationalAccel": number|null }\n\n' +
+      'Return ONLY valid JSON, no other text.';
+
+    const extractionResult = await model.generateContent(extractionPrompt);
+    const extractionText = extractionResult.response.text();
+
+    let stats: SwingStats | undefined;
+    const jsonMatch = extractionText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const raw = JSON.parse(jsonMatch[0]);
+        const cleaned: Record<string, number> = {};
+        for (const [k, v] of Object.entries(raw)) {
+          if (typeof v === 'number') cleaned[k] = v;
+        }
+        const validation = statsSchema.safeParse(cleaned);
+        if (validation.success) stats = validation.data;
+      } catch {
+        // fall through with stats undefined
+      }
+    }
+
+    const responsePrompt = `${systemPrompt}\n\nUser message: "${message}"\n\n` +
+      `Extracted stats: ${JSON.stringify(stats ?? {})}\n\n` +
+      'Give a friendly, helpful response under 150 words. Mention which stats were extracted.';
+
+    const responseResult = await model.generateContent(responsePrompt);
+    return { response: responseResult.response.text(), stats };
   }
 
   async answerAnalysisQuestion(_message: string): Promise<string> {

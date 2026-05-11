@@ -264,3 +264,31 @@ Total: ~19 tests.
 ## Open questions
 
 None — all design questions resolved during brainstorming.
+
+## Implementation amendment (2026-05-11, post-build)
+
+The Claude Agent SDK turned out to be a programmatic interface to the
+Claude Code agent (it spawns the `claude` binary as a subprocess and
+runs an agent session with built-in filesystem tools), not a thin
+wrapper around Anthropic's Messages API. It exposes `query()` returning
+an `AsyncGenerator<SDKMessage>`, no `messages.create({ ..., tool_choice })`
+shape, no `model` / `system` / `max_tokens` parameters at the user
+layer, and no native image input.
+
+`ClaudeAnalyzer` therefore pivoted to spawning the `claude` CLI
+directly via `child_process.spawn`, with `--output-format json`. A
+new `server/ai/claudeCli.ts` module wraps the subprocess. Subscription
+auth works automatically via the user's existing `claude login` OAuth.
+
+**Consequences vs the original spec:**
+- No forced-tool-use for structured output. `analyzeSwing` uses the
+  same JSON-fence + zod-validate pattern as `GeminiAnalyzer`. The
+  reliability win that motivated tool-use is lost.
+- Vision works but via the CLI's `Read` tool: image paths are passed
+  via `--add-dir`, and the prompt instructs Claude to read them. Adds
+  one or two extra agent-loop turns per request.
+- Per-call cost is higher (~$0.01 cache-creation tokens for the default
+  Claude Code system prompt unless `--bare` is used; `--bare` defeats
+  subscription auth).
+
+The `@anthropic-ai/claude-agent-sdk` dep was removed.

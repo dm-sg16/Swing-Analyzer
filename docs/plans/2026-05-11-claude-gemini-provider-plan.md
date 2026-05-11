@@ -12,6 +12,8 @@
 
 **Implementation note on Claude Agent SDK API:** This plan assumes the Agent SDK exposes a `messages.create()`-like API similar to `@anthropic-ai/sdk`. If the actual SDK shape differs (e.g., uses `query()` instead), adapt the call assembly — the test contracts and response-parsing logic are unchanged.
 
+**Post-build amendment (2026-05-11):** The Agent SDK turned out to be a Claude Code spawner, not a Messages API client. T9-T12 ended up implemented with `child_process.spawn('claude', [...])` instead of an SDK call, via a new `server/ai/claudeCli.ts` helper. Tests mock the helper. See the spec's "Implementation amendment" for context.
+
 ---
 
 ## Task 1: Set up Vitest

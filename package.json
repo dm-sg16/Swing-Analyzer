@@ -13,7 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.37.0",
+    "@anthropic-ai/claude-agent-sdk": "^0.1.77",
     "@google/generative-ai": "^0.24.0",
     "@hookform/resolvers": "^3.9.1",
     "@jridgewell/trace-mapping": "^0.3.25",
@@ -66,7 +66,6 @@
     "lucide-react": "^0.453.0",
     "memorystore": "^1.6.7",
     "multer": "^1.4.5-lts.2",
-    "openai": "^4.92.0",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
     "pdfkit": "^0.16.0",
@@ -83,7 +82,7 @@
     "vaul": "^1.1.0",
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
-    "zod": "^3.23.8",
+    "zod": "^3.25.0",
     "zod-validation-error": "^3.4.0"
   },
   "devDependencies": {

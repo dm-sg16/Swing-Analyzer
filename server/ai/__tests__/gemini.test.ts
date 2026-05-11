@@ -149,3 +149,25 @@ describe('GeminiAnalyzer.analyzeStatsChat', () => {
     await expect(analyzer.analyzeStatsChat('whatever')).rejects.toBeInstanceOf(ProviderAuthError);
   });
 });
+
+describe('GeminiAnalyzer.answerAnalysisQuestion', () => {
+  beforeEach(() => {
+    mockGenerateContent.mockReset();
+    process.env.GEMINI_API_KEY = 'test-key';
+  });
+
+  it('returns the answer text', async () => {
+    mockGenerateContent.mockResolvedValueOnce({
+      response: { text: () => 'Your hip rotation is the main issue. Work on torque drills.' },
+    });
+    const analyzer = new GeminiAnalyzer();
+    const result = await analyzer.answerAnalysisQuestion('What about hip rotation?');
+    expect(result).toContain('hip rotation');
+  });
+
+  it('throws ProviderAuthError when GEMINI_API_KEY is missing', async () => {
+    delete process.env.GEMINI_API_KEY;
+    const analyzer = new GeminiAnalyzer();
+    await expect(analyzer.answerAnalysisQuestion('q?')).rejects.toBeInstanceOf(ProviderAuthError);
+  });
+});

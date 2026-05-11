@@ -13,7 +13,7 @@ import {
   type StatsChatResult,
   type SwingAnalyzer,
 } from './types';
-import { statsChatSystemPrompt, swingAnalysisUserPrompt } from './prompts';
+import { analysisQuestionPrompt, statsChatSystemPrompt, swingAnalysisUserPrompt } from './prompts';
 
 const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
@@ -151,7 +151,10 @@ export class GeminiAnalyzer implements SwingAnalyzer {
     return { response: responseResult.response.text(), stats };
   }
 
-  async answerAnalysisQuestion(_message: string): Promise<string> {
-    throw new Error('not implemented');
+  async answerAnalysisQuestion(message: string): Promise<string> {
+    const client = this.getClient();
+    const model = client.getGenerativeModel({ model: MODEL_NAME });
+    const result = await model.generateContent(analysisQuestionPrompt(message));
+    return result.response.text();
   }
 }

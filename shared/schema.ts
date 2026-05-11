@@ -126,3 +126,7 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertSwing = z.infer<typeof insertSwingSchema>;
 export type Swing = typeof swings.$inferSelect;
+
+// AI provider selection — runtime schema. The matching TypeScript union
+// `Provider` lives in `server/ai/types.ts`; both resolve to `'claude' | 'gemini'`.
+export const providerSchema = z.enum(['claude', 'gemini']);

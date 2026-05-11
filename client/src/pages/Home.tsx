@@ -44,6 +44,9 @@ export default function Home() {
   // State for analysis results
   const [analysisResults, setAnalysisResults] = useState<AnalysisResultsType | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // AI provider selection (server-side default is also 'claude' if AI_PROVIDER unset)
+  const [provider, setProvider] = useState<'claude' | 'gemini'>('claude');
   
   // Auto-generate analysis when video is uploaded (for Simple mode)
   useEffect(() => {
@@ -162,13 +165,15 @@ export default function Home() {
         success: boolean;
         analysis: AnalysisResultsType;
         message?: string;
+        provider?: 'claude' | 'gemini';
       }
-      
+
       const response = await apiRequest<AnalysisResponse>("POST", "/api/analyze", {
         videoUrls: videoUrl ? [videoUrl] : [],
         imageUrls,
         stats,
-        options: analysisOptions
+        options: analysisOptions,
+        provider,
       });
       
       console.log("Received analysis response:", response);
@@ -305,11 +310,13 @@ export default function Home() {
               <StatsChatSimple onStatsChange={handleStatsChange} />
               
               {/* Analysis actions with all options */}
-              <AnalysisActions 
+              <AnalysisActions
                 options={analysisOptions}
                 onOptionsChange={setAnalysisOptions}
                 onGenerateAnalysis={handleGenerateAnalysis}
                 isAnalyzing={isAnalyzing}
+                provider={provider}
+                onProviderChange={setProvider}
               />
               
               {/* Analysis results */}

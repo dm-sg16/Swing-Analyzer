@@ -17,7 +17,7 @@ A cutting-edge baseball swing analysis platform that leverages AI and computer v
 - **Frontend**: React, TypeScript, Tailwind CSS, Shadcn UI
 - **Backend**: Node.js, Express
 - **Database**: PostgreSQL with Drizzle ORM
-- **AI Services**: Google Gemini AI for visual analysis
+- **AI Services**: Anthropic Claude (via the `claude` CLI with Pro/Max subscription auth) and/or Google Gemini, selectable per request
 - **Additional Features**: PDF generation, video processing, WebSockets for real-time updates
 
 ## Getting Started
@@ -26,7 +26,9 @@ A cutting-edge baseball swing analysis platform that leverages AI and computer v
 
 - Node.js 18 or later
 - PostgreSQL database
-- Google Gemini API key
+- One or both AI providers configured:
+  - **Claude** (recommended for local use): the `claude` CLI authenticated to your Pro/Max account (`claude login`). Subscription tokens are used; no API key needed. Vision works via the `Read` tool, so the CLI subprocess accesses local image paths via `--add-dir`.
+  - **Gemini**: a Google Gemini API key set in `GEMINI_API_KEY`.
 
 ### Installation
 
@@ -38,8 +40,10 @@ A cutting-edge baseball swing analysis platform that leverages AI and computer v
 3. Set up environment variables in `.env` file:
    ```
    DATABASE_URL=your_postgres_database_url
-   GEMINI_API_KEY=your_gemini_api_key
+   AI_PROVIDER=claude            # or 'gemini' — server-side default if request omits it
+   GEMINI_API_KEY=your_gemini_api_key   # required only if you plan to use Gemini
    ```
+   The active AI provider is selected per request via the UI dropdown (defaulting to whatever `AI_PROVIDER` is set to). Claude requires the `claude` CLI to be logged into a Pro/Max account on the host machine.
 4. Initialize the database
    ```
    npm run db:push

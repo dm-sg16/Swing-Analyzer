@@ -1,6 +1,7 @@
 import path from 'path';
 import {
   analysisResultsSchema,
+  statsSchema,
   type AnalysisOptions,
   type AnalysisResults,
   type SwingStats,
@@ -11,6 +12,7 @@ import {
   type SwingAnalyzer,
 } from './types';
 import {
+  statsChatSystemPrompt,
   swingAnalysisSystemPrompt,
   swingAnalysisUserPrompt,
 } from './prompts';
@@ -97,8 +99,44 @@ export class ClaudeAnalyzer implements SwingAnalyzer {
     });
   }
 
-  async analyzeStatsChat(_message: string): Promise<StatsChatResult> {
-    throw new Error('not implemented');
+  async analyzeStatsChat(message: string): Promise<StatsChatResult> {
+    const fullPrompt = `User message: "${message}"\n\n` +
+      'Return ONLY a JSON object inside a ```json code fence with two fields:\n' +
+      '{ "stats": { "batSpeed"?: number, "exitVelocity"?: number, "launchAngle"?: number, ' +
+      '"attackAngle"?: number, "timeToContact"?: number, "rotationalAccel"?: number }, ' +
+      '"response": "<friendly response under 150 words mentioning what was extracted>" }\n' +
+      'Omit any stats field you cannot determine. Always include "response".';
+
+    const text = await runClaudeCli({
+      prompt: fullPrompt,
+      systemPrompt: statsChatSystemPrompt(),
+      model: DEFAULT_MODEL,
+    });
+
+    const fenceMatch = text.match(/```json\n([\s\S]*?)\n```/);
+    const looseMatch = text.match(/{[\s\S]*}/);
+    const jsonStr = fenceMatch ? fenceMatch[1] : looseMatch ? looseMatch[0] : null;
+    if (!jsonStr) {
+      // Chat fallback: return Claude's raw text so the user gets *something*.
+      return { response: text };
+    }
+
+    let parsed: { stats?: unknown; response?: unknown };
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      return { response: text };
+    }
+
+    let stats: SwingStats | undefined;
+    if (parsed.stats && typeof parsed.stats === 'object') {
+      const validation = statsSchema.safeParse(parsed.stats);
+      if (validation.success) stats = validation.data;
+    }
+    const response = typeof parsed.response === 'string' && parsed.response.length > 0
+      ? parsed.response
+      : text;
+    return { response, stats };
   }
 
   async answerAnalysisQuestion(_message: string): Promise<string> {

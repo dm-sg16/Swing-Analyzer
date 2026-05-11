@@ -148,3 +148,52 @@ describe('ClaudeAnalyzer.analyzeImage', () => {
     expect(callOpts.prompt).toContain('youth baseball coach');
   });
 });
+
+describe('ClaudeAnalyzer.analyzeStatsChat', () => {
+  beforeEach(() => {
+    mockRunClaudeCli.mockReset();
+  });
+
+  it('extracts stats and response from JSON-fenced output', async () => {
+    mockRunClaudeCli.mockResolvedValueOnce(
+      '```json\n' +
+      JSON.stringify({
+        stats: { batSpeed: 65, exitVelocity: 88 },
+        response: 'Bat speed 65, EV 88. Nice contact.',
+      }) +
+      '\n```',
+    );
+    const analyzer = new ClaudeAnalyzer();
+    const result = await analyzer.analyzeStatsChat('My bat speed is 65 and EV is 88');
+    expect(result.stats?.batSpeed).toBe(65);
+    expect(result.stats?.exitVelocity).toBe(88);
+    expect(result.response).toContain('65');
+  });
+
+  it('returns response only when stats are absent from JSON', async () => {
+    mockRunClaudeCli.mockResolvedValueOnce(
+      '```json\n' + JSON.stringify({ stats: {}, response: 'Tell me more about your swing.' }) + '\n```',
+    );
+    const analyzer = new ClaudeAnalyzer();
+    const result = await analyzer.analyzeStatsChat('hi');
+    expect(result.stats).toEqual({});  // statsSchema accepts empty object
+    expect(result.response).toContain('Tell me more');
+  });
+
+  it('falls back to raw text when no JSON is present', async () => {
+    mockRunClaudeCli.mockResolvedValueOnce('I could not extract any stats from your message.');
+    const analyzer = new ClaudeAnalyzer();
+    const result = await analyzer.analyzeStatsChat('hello');
+    expect(result.stats).toBeUndefined();
+    expect(result.response).toContain('could not extract');
+  });
+
+  it('uses statsChat system prompt and embeds the user message', async () => {
+    mockRunClaudeCli.mockResolvedValueOnce('```json\n{"stats":{},"response":"ok"}\n```');
+    const analyzer = new ClaudeAnalyzer();
+    await analyzer.analyzeStatsChat('My bat speed is 65');
+    const callOpts = mockRunClaudeCli.mock.calls[0][0];
+    expect(callOpts.systemPrompt).toContain('batSpeed');
+    expect(callOpts.prompt).toContain('My bat speed is 65');
+  });
+});

@@ -12,6 +12,7 @@ import {
   type SwingAnalyzer,
 } from './types';
 import {
+  analysisQuestionPrompt,
   statsChatSystemPrompt,
   swingAnalysisSystemPrompt,
   swingAnalysisUserPrompt,
@@ -139,7 +140,10 @@ export class ClaudeAnalyzer implements SwingAnalyzer {
     return { response, stats };
   }
 
-  async answerAnalysisQuestion(_message: string): Promise<string> {
-    throw new Error('not implemented');
+  async answerAnalysisQuestion(message: string): Promise<string> {
+    return runClaudeCli({
+      prompt: analysisQuestionPrompt(message),
+      model: DEFAULT_MODEL,
+    });
   }
 }

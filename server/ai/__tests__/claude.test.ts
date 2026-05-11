@@ -197,3 +197,25 @@ describe('ClaudeAnalyzer.analyzeStatsChat', () => {
     expect(callOpts.prompt).toContain('My bat speed is 65');
   });
 });
+
+describe('ClaudeAnalyzer.answerAnalysisQuestion', () => {
+  beforeEach(() => {
+    mockRunClaudeCli.mockReset();
+  });
+
+  it('returns the CLI text response', async () => {
+    mockRunClaudeCli.mockResolvedValueOnce('Hip rotation is the main issue.');
+    const analyzer = new ClaudeAnalyzer();
+    const result = await analyzer.answerAnalysisQuestion('What about hip rotation?');
+    expect(result).toContain('Hip rotation');
+  });
+
+  it('embeds the user message in the prompt', async () => {
+    mockRunClaudeCli.mockResolvedValueOnce('answer');
+    const analyzer = new ClaudeAnalyzer();
+    await analyzer.answerAnalysisQuestion('Why is my swing slow?');
+    const callOpts = mockRunClaudeCli.mock.calls[0][0];
+    expect(callOpts.prompt).toContain('Why is my swing slow?');
+    expect(callOpts.prompt).toContain('3-4 sentences');
+  });
+});

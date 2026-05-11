@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 
 interface AnalysisChatProps {
   analysisResults: AnalysisResultsType | null;
+  provider?: 'claude' | 'gemini';
 }
 
 type MessageType = "user" | "ai" | "system";
@@ -19,7 +20,7 @@ interface Message {
   timestamp: Date;
 }
 
-export default function AnalysisChat({ analysisResults }: AnalysisChatProps) {
+export default function AnalysisChat({ analysisResults, provider }: AnalysisChatProps) {
   const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -91,7 +92,8 @@ Please provide a helpful, concise answer to their question based on the analysis
         "POST",
         "/api/chat-stats",
         {
-          message: prompt
+          message: prompt,
+          provider,
         }
       );
       

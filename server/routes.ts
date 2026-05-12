@@ -5,8 +5,8 @@ import multer, { FileFilterCallback } from "multer";
 import path from "path";
 import fs from "fs";
 import { statsSchema, analysisOptionsSchema, AnalysisResults, InsertSwing, insertUserSchema } from "@shared/schema";
-import { analyzeSwing, isGeminiAvailable, analyzeImageWithGemini } from "./gemini";
-import { analyzeStatsChat, isChatAvailable } from "./chatAnalysis";
+import { getAnalyzer, ProviderAuthError, ProviderInputError, ProviderResponseError } from "./ai";
+import { resolveProvider } from "./routes-helpers";
 import { generateAnalysisPDF } from "./pdf";
 
 // Set up multer for file uploads
@@ -153,14 +153,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      console.log("Starting analysis with Gemini AI...");
-      
-      // Perform the analysis
-      const analysis = await analyzeSwing(
-        processedVideoUrls[0], 
-        imageUrls, 
-        stats, 
-        analysisOptions
+      const provider = resolveProvider(req.body);
+      console.log(`Starting analysis with ${provider}...`);
+
+      const analyzer = getAnalyzer(provider);
+      const analysis = await analyzer.analyzeSwing(
+        processedVideoUrls[0],
+        imageUrls,
+        stats,
+        analysisOptions,
       );
       console.log("Analysis completed successfully");
       
@@ -195,17 +196,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Return response
       res.status(200).json({
         success: true,
-        analysis
+        analysis,
+        provider,
       });
     } catch (err: any) {
       console.error("Analysis error:", err);
-      res.status(500).json({ 
-        success: false, 
-        message: err.message || "Error generating analysis" 
+      if (err instanceof ProviderAuthError) {
+        return res.status(503).json({
+          success: false,
+          message: err.message,
+          provider: err.provider,
+          suggestedAction: 'switch_provider',
+        });
+      }
+      if (err instanceof ProviderResponseError || err instanceof ProviderInputError) {
+        return res.status(422).json({
+          success: false,
+          message: err.message,
+          provider: err.provider,
+        });
+      }
+      res.status(500).json({
+        success: false,
+        message: err.message || "Error generating analysis",
       });
     }
   });
-  
+
   // API endpoint to list all user swings
   app.get("/api/swings", async (req: Request, res: Response) => {
     try {
@@ -480,15 +497,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           `;
         }
         
-        // Import model functions
-        const { analyzeImageWithGemini } = await import("./gemini");
-        
-        // Send to Gemini for analysis, passing the simpleMode flag
-        const analysis = await analyzeImageWithGemini(imagePath, prompt, simpleMode);
-        
+        const provider = resolveProvider(req.body);
+        const analyzer = getAnalyzer(provider);
+        const analysis = await analyzer.analyzeImage(imagePath, prompt, simpleMode);
+
         res.json({
           success: true,
-          analysis
+          analysis,
+          provider,
         });
       } finally {
         // Clean up the temporary file
@@ -498,9 +514,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (error: any) {
       console.error("Error analyzing frame:", error);
+      if (error instanceof ProviderAuthError) {
+        return res.status(503).json({
+          success: false,
+          message: error.message,
+          provider: error.provider,
+          suggestedAction: 'switch_provider',
+        });
+      }
+      if (error instanceof ProviderResponseError || error instanceof ProviderInputError) {
+        return res.status(422).json({
+          success: false,
+          message: error.message,
+          provider: error.provider,
+        });
+      }
       res.status(500).json({
         success: false,
-        message: error.message || "Failed to analyze frame"
+        message: error.message || "Failed to analyze frame",
       });
     }
   });
@@ -509,74 +540,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/chat-stats", async (req: Request, res: Response) => {
     try {
       const { message } = req.body;
-      
+
       if (!message) {
         return res.status(400).json({
           success: false,
-          message: "No message provided"
+          message: "No message provided",
         });
       }
-      
+
       console.log("Processing chat message for stats analysis:", message);
-      
-      // Check if chat is available (Gemini API key is set)
-      if (!isChatAvailable()) {
-        return res.status(500).json({
-          success: false,
-          message: "Stats chat is not available. Gemini API key not configured."
-        });
-      }
-      
-      // Check if this is an analysis question (contains specific analysis context)
+
+      const provider = resolveProvider(req.body);
+      const analyzer = getAnalyzer(provider);
+
       const isAnalysisQuestion = message.includes("Based on this baseball swing analysis data:");
-      
+
       if (isAnalysisQuestion) {
-        // Extract the user's actual question from the formatted message
-        const questionMatch = message.match(/The user asked: "(.*?)"/);
-        const userQuestion = questionMatch ? questionMatch[1] : "What insights can you provide?";
-        
-        console.log("Detected analysis question:", userQuestion);
-        
-        // Import Gemini directly 
-        const { GoogleGenerativeAI } = await import("@google/generative-ai");
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
-        
-        // Create a prompt that focuses on answering the analysis question
-        const prompt = `
-          You are a baseball swing analysis expert. Please answer the following question about
-          a swing analysis. Be specific, helpful, and conversational in your response.
-          
-          ${message}
-          
-          Keep your answer focused on the actual question and provide specific insights based
-          on the analysis data provided above. Be conversational and helpful, providing
-          actionable insights where possible.
-          
-          Your response should be 3-4 sentences maximum, unless a detailed explanation is required.
-        `;
-        
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text();
-        
+        const responseText = await analyzer.answerAnalysisQuestion(message);
         return res.status(200).json({
           success: true,
           response: responseText,
-          message: responseText
-        });
-      } else {
-        // Handle regular stats extraction (the original functionality)
-        const { response, stats } = await analyzeStatsChat(message);
-        
-        res.status(200).json({
-          success: true,
-          response,
-          stats,
-          message: response
+          message: responseText,
+          provider,
         });
       }
+
+      const { response, stats } = await analyzer.analyzeStatsChat(message);
+      return res.status(200).json({
+        success: true,
+        response,
+        stats,
+        message: response,
+        provider,
+      });
     } catch (err: any) {
       console.error("Error in chat stats analysis:", err);
+      if (err instanceof ProviderAuthError) {
+        return res.status(503).json({
+          success: false,
+          message: err.message,
+          provider: err.provider,
+          suggestedAction: 'switch_provider',
+        });
+      }
+      if (err instanceof ProviderResponseError || err instanceof ProviderInputError) {
+        return res.status(422).json({
+          success: false,
+          message: err.message,
+          provider: err.provider,
+        });
+      }
       res.status(500).json({
         success: false,
         message: err.message || "Error processing chat message"

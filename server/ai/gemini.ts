@@ -1,0 +1,160 @@
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
+import fs from 'fs';
+import {
+  analysisResultsSchema,
+  statsSchema,
+  type AnalysisOptions,
+  type AnalysisResults,
+  type SwingStats,
+} from '@shared/schema';
+import {
+  ProviderAuthError,
+  ProviderResponseError,
+  type StatsChatResult,
+  type SwingAnalyzer,
+} from './types';
+import { analysisQuestionPrompt, statsChatSystemPrompt, swingAnalysisUserPrompt } from './prompts';
+
+const SAFETY_SETTINGS = [
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+];
+
+const MODEL_NAME = 'gemini-1.5-pro-latest';
+
+export class GeminiAnalyzer implements SwingAnalyzer {
+  private getClient(): GoogleGenerativeAI {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) {
+      throw new ProviderAuthError(
+        'Gemini API key not configured. Set GEMINI_API_KEY in your environment.',
+        'gemini',
+      );
+    }
+    return new GoogleGenerativeAI(key);
+  }
+
+  async analyzeSwing(
+    videoUrl: string | null,
+    imageUrls: string[] | null,
+    stats: SwingStats,
+    options: AnalysisOptions,
+  ): Promise<AnalysisResults> {
+    const isSimpleMode = (options as any).simpleMode === true;
+    const userPrompt = swingAnalysisUserPrompt(stats, options, videoUrl, imageUrls?.length ?? 0);
+
+    const systemPreamble = isSimpleMode
+      ? 'You are a youth baseball coach who explains swing mechanics to parents in plain language. '
+      : 'You are a professional baseball swing analysis expert. Use technical baseball terminology. ';
+
+    const fullPrompt =
+      systemPreamble +
+      userPrompt +
+      '\n\nProvide the analysis in the following JSON format inside a ```json code fence:\n' +
+      '{ "score": <1-10>, "strengths": [...], "improvements": [...], ' +
+      '"keyFrames": [{ "time": <number>, "description": "...", "annotations": [...] }], ' +
+      '"recommendedDrills": [{ "title": "...", "description": "..." }] }';
+
+    const client = this.getClient();
+    const model = client.getGenerativeModel({ model: MODEL_NAME, safetySettings: SAFETY_SETTINGS });
+
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
+      generationConfig: { temperature: 0.4, topK: 32, topP: 0.95, maxOutputTokens: 4096 },
+    });
+    const text = result.response.text();
+
+    const fenceMatch = text.match(/```json\n([\s\S]*?)\n```/);
+    const looseMatch = text.match(/{[\s\S]*}/);
+    const jsonStr = fenceMatch ? fenceMatch[1] : looseMatch ? looseMatch[0] : null;
+    if (!jsonStr) {
+      throw new ProviderResponseError('Gemini returned no parseable JSON.', 'gemini');
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch (err) {
+      throw new ProviderResponseError(`Gemini returned invalid JSON: ${(err as Error).message}`, 'gemini');
+    }
+
+    const validation = analysisResultsSchema.safeParse(parsed);
+    if (!validation.success) {
+      throw new ProviderResponseError(
+        `Gemini returned malformed analysis: ${validation.error.message}`,
+        'gemini',
+      );
+    }
+    return validation.data;
+  }
+
+  async analyzeImage(imagePath: string, prompt: string, isSimpleMode: boolean): Promise<string> {
+    const client = this.getClient();
+    const model = client.getGenerativeModel({ model: MODEL_NAME, safetySettings: SAFETY_SETTINGS });
+
+    const imageData = fs.readFileSync(imagePath).toString('base64');
+    const audiencePreamble = isSimpleMode
+      ? 'You are a youth baseball coach explaining swing mechanics to parents in plain language. '
+      : 'You are a professional baseball coach with deep technical knowledge. ';
+
+    const result = await model.generateContent({
+      contents: [{
+        role: 'user',
+        parts: [
+          { text: audiencePreamble + prompt },
+          { inlineData: { mimeType: 'image/jpeg', data: imageData } },
+        ],
+      }],
+      generationConfig: { temperature: 0.4, topK: 32, topP: 0.95, maxOutputTokens: 4096 },
+    });
+
+    return result.response.text();
+  }
+
+  async analyzeStatsChat(message: string): Promise<StatsChatResult> {
+    const client = this.getClient();
+    const model = client.getGenerativeModel({ model: MODEL_NAME });
+
+    const systemPrompt = statsChatSystemPrompt();
+    const extractionPrompt = `${systemPrompt}\n\nUser message: "${message}"\n\n` +
+      'Extract the swing statistics in JSON format:\n' +
+      '{ "batSpeed": number|null, "exitVelocity": number|null, "launchAngle": number|null, ' +
+      '"attackAngle": number|null, "timeToContact": number|null, "rotationalAccel": number|null }\n\n' +
+      'Return ONLY valid JSON, no other text.';
+
+    const extractionResult = await model.generateContent(extractionPrompt);
+    const extractionText = extractionResult.response.text();
+
+    let stats: SwingStats | undefined;
+    const jsonMatch = extractionText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const raw = JSON.parse(jsonMatch[0]);
+        const cleaned: Record<string, number> = {};
+        for (const [k, v] of Object.entries(raw)) {
+          if (typeof v === 'number') cleaned[k] = v;
+        }
+        const validation = statsSchema.safeParse(cleaned);
+        if (validation.success) stats = validation.data;
+      } catch {
+        // fall through with stats undefined
+      }
+    }
+
+    const responsePrompt = `${systemPrompt}\n\nUser message: "${message}"\n\n` +
+      `Extracted stats: ${JSON.stringify(stats ?? {})}\n\n` +
+      'Give a friendly, helpful response under 150 words. Mention which stats were extracted.';
+
+    const responseResult = await model.generateContent(responsePrompt);
+    return { response: responseResult.response.text(), stats };
+  }
+
+  async answerAnalysisQuestion(message: string): Promise<string> {
+    const client = this.getClient();
+    const model = client.getGenerativeModel({ model: MODEL_NAME });
+    const result = await model.generateContent(analysisQuestionPrompt(message));
+    return result.response.text();
+  }
+}

@@ -13,13 +13,15 @@ interface VideoPlayerProps {
   onClose: () => void;
   analysisResults?: AnalysisResults | null;
   hideControls?: boolean;
+  provider?: 'claude' | 'gemini';
 }
 
-export default function VideoPlayer({ 
-  videoUrl, 
+export default function VideoPlayer({
+  videoUrl,
   onClose,
   analysisResults,
-  hideControls = false
+  hideControls = false,
+  provider,
 }: VideoPlayerProps) {
   // Debug log for analysisResults
   console.log("VideoPlayer received analysisResults:", analysisResults);
@@ -230,10 +232,11 @@ export default function VideoPlayer({
         },
         body: JSON.stringify({
           imageData: dataUrl,
-          frameInfo
+          frameInfo,
+          provider,
         })
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to analyze frame with Google AI');
       }
@@ -396,7 +399,8 @@ export default function VideoPlayer({
             },
             body: JSON.stringify({
               imageData: dataUrl,
-              frameInfo
+              frameInfo,
+              provider,
             })
           });
           

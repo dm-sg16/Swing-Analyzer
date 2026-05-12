@@ -8,6 +8,7 @@ import { SwingStats } from "@shared/schema";
 
 interface StatsChatProps {
   onStatsChange?: (stats: SwingStats) => void;
+  provider?: 'claude' | 'gemini';
 }
 
 type MessageType = "user" | "ai" | "system";
@@ -19,7 +20,7 @@ interface Message {
   timestamp: Date;
 }
 
-export default function StatsChatSimple({ onStatsChange }: StatsChatProps) {
+export default function StatsChatSimple({ onStatsChange, provider }: StatsChatProps) {
   const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -55,7 +56,8 @@ export default function StatsChatSimple({ onStatsChange }: StatsChatProps) {
     try {
       // Send message to API for AI analysis
       const response = await apiRequest("POST", "/api/chat-stats", {
-        message: userMessage.content
+        message: userMessage.content,
+        provider,
       });
 
       if (!response.success) {
